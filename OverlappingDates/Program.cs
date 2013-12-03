@@ -48,14 +48,13 @@ namespace OverlappingDates
 
             var end = DateTime.Parse("3 Dec 2013 12:30:00");
 
-
             // True AND True == True
 
             using (var session = store.OpenSession())
             {
                 var results = session
                     .Advanced
-                    .LuceneQuery<MyDocument>()
+                    .LuceneQuery<MyDocument>("MyDocuments")
                     // !(3 Dec 2013 12:00:00 > 3 Dec 2013 12:30:00) == True
                     .Not.WhereGreaterThan("Start", end)
                     .AndAlso()
@@ -63,8 +62,20 @@ namespace OverlappingDates
                     .Not.WhereLessThan("End", start)
                     .ToList();
 
-                Debug.Assert(results.Count == 1);
+                Console.WriteLine("Results: " + results.Count);
             }
+
+            using (var session = store.OpenSession())
+            {
+                var results = session
+                    .Query<MyDocument>("MyDocuments")
+                    .Where(x => !(x.Start > end) && !(x.End < start))
+                    .ToList();
+
+                Console.WriteLine("Results: " + results.Count);
+            }
+
+            Console.ReadLine();
         }
     }
 }
