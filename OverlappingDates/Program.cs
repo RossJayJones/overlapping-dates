@@ -1,7 +1,6 @@
 ﻿using System;
-using System.Diagnostics;
 using System.Linq;
-using Lucene.Net.Analysis;
+using Raven.Client;
 using Raven.Client.Embedded;
 using Raven.Client.Indexes;
 
@@ -9,9 +8,9 @@ namespace OverlappingDates
 {
     internal class Program
     {
-        private static void Main(string[] args)
+        private static IDocumentStore CreateStore()
         {
-            var store = new EmbeddableDocumentStore {RunInMemory = true};
+            var store = new EmbeddableDocumentStore { RunInMemory = true };
 
             store.Initialize();
 
@@ -19,57 +18,49 @@ namespace OverlappingDates
                 .DatabaseCommands
                 .PutIndex("MyDocuments",
                           new IndexDefinitionBuilder<MyDocument>
-                              {
-                                  Map = documents => from doc in documents
-                                                     select new
-                                                         {
-                                                             doc.Start,
-                                                             doc.End
-                                                         },
-                                  Analyzers =
-                                      {
-                                          {x => x.Start, "SimpleAnalyzer"},
-                                          {x => x.End, "SimpleAnalyzer"}
-                                      }
-                              });
+                          {
+                              Map = documents => from doc in documents
+                                                 select new
+                                                 {
+                                                     doc.Start,
+                                                     doc.End
+                                                 }
+                          });
 
+            return store;
+        }
+
+        private static void Populate(IDocumentStore store)
+        {
             using (var session = store.OpenSession())
             {
                 var doc = new MyDocument
-                    {
-                        Start = DateTime.Parse("3 Dec 2013 12:00:00"),
-                        End = DateTime.Parse("3 Dec 2013 13:00:00")
-                    };
+                {
+                    Start = DateTime.Parse("3 Dec 2013 12:00:00"),
+                    End = DateTime.Parse("3 Dec 2013 13:00:00")
+                };
                 session.Store(doc);
                 session.SaveChanges();
             }
+        }
+
+        private static void Main(string[] args)
+        {
+            var store = CreateStore();
+
+            Populate(store);
             
             var start = DateTime.Parse("3 Dec 2013 11:30:00");
 
             var end = DateTime.Parse("3 Dec 2013 12:30:00");
 
-            // True AND True == True
-
             using (var session = store.OpenSession())
             {
-                var results = session
-                    .Advanced
-                    .LuceneQuery<MyDocument>("MyDocuments")
-                    // !(3 Dec 2013 12:00:00 > 3 Dec 2013 12:30:00) == True
-                    .Not.WhereGreaterThan("Start", end)
-                    .AndAlso()
-                    // !(3 Dec 2013 13:00:00 < 3 Dec 2013 11:30:00) == True
-                    .Not.WhereLessThan("End", start)
-                    .ToList();
+                session.Advanced.AllowNonAuthoritativeInformation = false;
 
-                Console.WriteLine("Results: " + results.Count);
-            }
-
-            using (var session = store.OpenSession())
-            {
                 var results = session
                     .Query<MyDocument>("MyDocuments")
-                    .Where(x => !(x.Start > end) && !(x.End < start))
+                    .Where(x => x.Start < end && x.End > start)
                     .ToList();
 
                 Console.WriteLine("Results: " + results.Count);
